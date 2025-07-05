@@ -127,6 +127,10 @@ variable "buckets" {
     restrict_public_buckets = optional(bool, true)
     tags                    = optional(map(string), {})
     website                 = optional(any, {})
+    distribution = optional(object({
+      aliases         = optional(list(string), null)
+      certificate_arn = optional(string, null)
+    }), null)
   }))
   default = {}
 }
@@ -258,10 +262,10 @@ variable "sns" {
     fifo_topic                  = optional(bool, false)
     name                        = optional(string)
     subscriptions = optional(map(object({
-      protocol             = string
-      endpoint             = string
-      filter_policy        = optional(string)
-      filter_policy_scope  = optional(string, "MessageAttributes")
+      protocol            = string
+      endpoint            = string
+      filter_policy       = optional(string)
+      filter_policy_scope = optional(string, "MessageAttributes")
     })), {})
     topic_policy_statements = optional(any, {})
   }))
@@ -299,4 +303,10 @@ variable "waf" {
     tags  = optional(map(string), {})
   }))
   default = {}
+}
+
+variable "zone_id" {
+  type        = string
+  description = "Zone ID"
+  default     = null
 }

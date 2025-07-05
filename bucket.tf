@@ -12,6 +12,7 @@ locals {
       tags                    = merge(local.tags, v.tags)
       website                 = v.website
       is_public               = alltrue([!v.block_public_policy, !v.block_public_policy, !v.ignore_public_acls, !v.restrict_public_buckets])
+      distribution            = v.distribution
     }
   }
 }
