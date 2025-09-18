@@ -278,6 +278,7 @@ variable "sqs" {
     create_dlq                  = optional(bool, false)
     fifo_queue                  = optional(bool, false)
     content_based_deduplication = optional(bool, false)
+    visibility_timeout_seconds  = optional(number, 30)
   }))
   default = {}
 }

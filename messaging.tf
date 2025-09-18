@@ -14,6 +14,7 @@ locals {
       fifo_queue                  = v.fifo_queue
       create_dlq                  = v.create_dlq
       content_based_deduplication = v.content_based_deduplication
+      visibility_timeout_seconds  = v.visibility_timeout_seconds
     }
   }
 
@@ -21,11 +22,11 @@ locals {
     for v in flatten([
       for sns_key, sns in local.sns : [
         for sub_key, sub in sns.subscriptions : {
-          sns_key              = sns_key
-          sub_key              = sub_key
-          endpoint             = sub.endpoint
-          filter_policy        = sub.filter_policy
-          filter_policy_scope  = sub.filter_policy != null ? sub.filter_policy_scope : null
+          sns_key             = sns_key
+          sub_key             = sub_key
+          endpoint            = sub.endpoint
+          filter_policy       = sub.filter_policy
+          filter_policy_scope = sub.filter_policy != null ? sub.filter_policy_scope : null
         } if sub.protocol == "sqs"
       ]
     ]) : format("%v-%v", v.sns_key, v.sub_key) => v
@@ -65,6 +66,7 @@ module "sqs" {
   fifo_queue                  = each.value.fifo_queue
   create_dlq                  = each.value.create_dlq
   content_based_deduplication = each.value.content_based_deduplication
+  visibility_timeout_seconds  = each.value.visibility_timeout_seconds
 }
 
 data "aws_iam_policy_document" "sns" {
@@ -129,9 +131,9 @@ resource "aws_sqs_queue_policy" "sqs" {
 resource "aws_sns_topic_subscription" "sqs" {
   for_each = local.sns_sqs_subscriptions
 
-  topic_arn            = module.sns[each.value.sns_key].topic_arn
-  protocol             = "sqs"
-  endpoint             = try(module.sqs[each.value.endpoint].queue_arn, each.value.endpoint)
-  filter_policy        = each.value.filter_policy
-  filter_policy_scope  = each.value.filter_policy_scope
+  topic_arn           = module.sns[each.value.sns_key].topic_arn
+  protocol            = "sqs"
+  endpoint            = try(module.sqs[each.value.endpoint].queue_arn, each.value.endpoint)
+  filter_policy       = each.value.filter_policy
+  filter_policy_scope = each.value.filter_policy_scope
 }

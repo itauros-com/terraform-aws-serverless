@@ -1,7 +1,7 @@
 locals {
   cdn = {
     for k, v in local.buckets : k => {
-      aliases                      = v.distribution.aliases
+      aliases                      = coalesce(v.distribution.aliases, [])
       default_root_object          = "index.html"
       create_origin_access_control = true
       origin = {
@@ -41,7 +41,7 @@ locals {
   cdn_records = var.zone_id != null ? {
     for v in flatten([
       for cdn_key, cdn in local.cdn : [
-        for alias in try(cdn.aliases, []) : {
+        for alias in cdn.aliases : {
           name    = module.cdn[cdn_key].cloudfront_distribution_domain_name
           zone_id = module.cdn[cdn_key].cloudfront_distribution_hosted_zone_id
           alias   = alias
