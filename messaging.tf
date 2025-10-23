@@ -58,7 +58,7 @@ module "sns" {
 
 module "sqs" {
   source  = "terraform-aws-modules/sqs/aws"
-  version = "~> 4.0"
+  version = "~> 5.0"
 
   for_each = local.sqs
 

@@ -11,7 +11,7 @@ locals {
 
 module "secrets" {
   source  = "terraform-aws-modules/secrets-manager/aws"
-  version = "~> 1.0"
+  version = "~> 2.0"
 
   for_each = local.secrets
 

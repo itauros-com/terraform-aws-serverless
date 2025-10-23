@@ -57,7 +57,7 @@ locals {
 
 module "cdn" {
   source  = "terraform-aws-modules/cloudfront/aws"
-  version = "~> 3.0"
+  version = "~> 5.0"
 
   for_each = local.cdn
 
@@ -65,11 +65,21 @@ module "cdn" {
   wait_for_deployment          = try(each.value.wait_for_deployment, false)
   default_root_object          = try(each.value.default_root_object, null)
   create_origin_access_control = try(each.value.create_origin_access_control, false)
-  origin_access_control        = try(each.value.origin_access_control, { (each.key) = { description = "", origin_type = "s3", signing_behavior = "always", signing_protocol = "sigv4" } })
-  origin                       = try(each.value.origin, null)
-  default_cache_behavior       = try(each.value.default_cache_behavior, null)
-  custom_error_response        = try(each.value.custom_error_response, null)
-  aliases                      = try(each.value.aliases, null)
+  origin_access_control = try(
+    each.value.origin_access_control,
+    {
+      (each.key) = {
+        description      = "",
+        origin_type      = "s3",
+        signing_behavior = "always",
+        signing_protocol = "sigv4"
+      }
+    },
+  )
+  origin                 = try(each.value.origin, null)
+  default_cache_behavior = try(each.value.default_cache_behavior, null)
+  custom_error_response  = try(each.value.custom_error_response, null)
+  aliases                = try(each.value.aliases, null)
 
   viewer_certificate = try(each.value.certificate_arn, null) != null ? {
     acm_certificate_arn = each.value.certificate_arn
@@ -97,14 +107,14 @@ resource "aws_route53_record" "cdn" {
 }
 
 resource "aws_s3_bucket_policy" "s3_origin_access_control" {
-  for_each = local.cdn
+  for_each = { for k, v in local.cdn : k => v if v.create_origin_access_control }
 
   bucket = module.buckets[each.key].s3_bucket_id
   policy = data.aws_iam_policy_document.s3_origin_access_control[each.key].json
 }
 
 data "aws_iam_policy_document" "s3_origin_access_control" {
-  for_each = local.cdn
+  for_each = { for k, v in local.cdn : k => v if v.create_origin_access_control }
 
   statement {
     principals {

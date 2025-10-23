@@ -19,7 +19,7 @@ locals {
 
 module "buckets" {
   source  = "terraform-aws-modules/s3-bucket/aws"
-  version = "~> 4.0"
+  version = "~> 5.0"
 
   for_each = local.buckets
 

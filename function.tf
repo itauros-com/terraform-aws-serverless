@@ -13,6 +13,7 @@ locals {
       ignore_source_code_hash           = true
       local_existing_package            = v.local_existing_package
       memory_size                       = v.memory_size
+      reserved_concurrent_executions    = v.reserved_concurrent_executions
       runtime                           = v.runtime
       tags                              = merge(local.tags, v.tags)
       timeout                           = v.timeout
@@ -46,6 +47,19 @@ locals {
           ])
         ]
         ],
+        # EventBridge permissions are handled by attach_lambda_policy in eventbridge module
+        # flatten([
+        #   for eventbridge_key, eventbridge in var.eventbridge : [
+        #     for schedule_key, schedule in eventbridge.schedules : {
+        #       lambda_key   = lambda_key
+        #       trigger_key  = format("%v-%v", eventbridge_key, schedule_key)
+        #       source       = eventbridge_key
+        #       schedule_key = schedule_key
+        #       service      = "events"
+        #       action       = "lambda:InvokeFunction"
+        #     } if schedule.arn == lambda_key
+        #   ]
+        # ]),
         [
           for trigger_key, trigger in lambda.triggers : {
             lambda_key       = lambda_key
@@ -64,6 +78,7 @@ locals {
       principal_org_id       = try(v.principal_org_id, null)
       service                = v.service
       source                 = try(v.source, null)
+      # schedule_key           = try(v.schedule_key, null)  # Not needed when using attach_lambda_policy
       source_account         = try(v.source_account, null)
       source_arn             = try(v.source_arn, null)
       event_source_token     = try(v.event_source_token, null)
@@ -74,7 +89,7 @@ locals {
 
 module "functions" {
   source  = "terraform-aws-modules/lambda/aws"
-  version = "~> 7.0"
+  version = "~> 8.0"
 
   for_each = local.functions
 
@@ -98,15 +113,16 @@ module "functions" {
       service = null
     })
   }
-  function_name           = each.value.function_name
-  function_tags           = each.value.function_tags
-  handler                 = each.value.handler
-  ignore_source_code_hash = each.value.ignore_source_code_hash
-  local_existing_package  = each.value.local_existing_package
-  memory_size             = each.value.memory_size
-  runtime                 = each.value.runtime
-  tags                    = each.value.tags
-  timeout                 = each.value.timeout
+  function_name                  = each.value.function_name
+  function_tags                  = each.value.function_tags
+  handler                        = each.value.handler
+  ignore_source_code_hash        = each.value.ignore_source_code_hash
+  local_existing_package         = each.value.local_existing_package
+  memory_size                    = each.value.memory_size
+  runtime                        = each.value.runtime
+  tags                           = each.value.tags
+  timeout                        = each.value.timeout
+  reserved_concurrent_executions = each.value.reserved_concurrent_executions
 
   attach_policies    = true
   number_of_policies = 1
@@ -126,6 +142,8 @@ resource "aws_lambda_permission" "this" {
   principal_org_id = each.value.principal_org_id
   source_arn = coalesce(each.value.source_arn, (
     each.value.service == "apigateway" ? format("%v/*/*", module.apigateways_v2[each.value.source].api_execution_arn) :
+    # EventBridge permissions are handled by attach_lambda_policy in eventbridge module
+    # each.value.service == "events" ? module.eventbridge[each.value.source].eventbridge_schedule_arns[each.value.schedule_key] :
     each.value.service == "" ? "" :
     ""
   ))

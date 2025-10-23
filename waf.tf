@@ -36,7 +36,7 @@ resource "aws_wafv2_ip_set" "this" {
 
 module "wafv2" {
   source  = "aws-ss/wafv2/aws"
-  version = "3.10.0"
+  version = "3.12.0"
 
   for_each = local.waf
 

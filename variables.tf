@@ -201,6 +201,7 @@ variable "functions" {
     local_existing_package            = optional(string, "functions/dummy/go/dist/bootstrap.zip")
     memory_size                       = optional(number, 128)
     policies                          = optional(list(string), [])
+    reserved_concurrent_executions    = optional(number, -1)
     runtime                           = optional(string, "provided.al2023")
     tags                              = optional(map(string), {})
     timeout                           = optional(number, 3)
@@ -302,6 +303,22 @@ variable "waf" {
     rules = any
     scope = optional(string, "REGIONAL")
     tags  = optional(map(string), {})
+  }))
+  default = {}
+}
+
+variable "eventbridge" {
+  type = map(object({
+    create_bus = optional(bool, false)
+    bus_name   = optional(string, "default")
+    schedules = optional(map(object({
+      description         = optional(string)
+      schedule_expression = optional(string)
+      timezone            = optional(string, "UTC")
+      arn                 = optional(string)
+      input               = optional(string)
+    })), {})
+    tags = optional(map(string), {})
   }))
   default = {}
 }
