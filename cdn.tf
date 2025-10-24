@@ -105,32 +105,3 @@ resource "aws_route53_record" "cdn" {
     evaluate_target_health = true
   }
 }
-
-resource "aws_s3_bucket_policy" "s3_origin_access_control" {
-  for_each = { for k, v in local.cdn : k => v if v.create_origin_access_control }
-
-  bucket = module.buckets[each.key].s3_bucket_id
-  policy = data.aws_iam_policy_document.s3_origin_access_control[each.key].json
-}
-
-data "aws_iam_policy_document" "s3_origin_access_control" {
-  for_each = { for k, v in local.cdn : k => v if v.create_origin_access_control }
-
-  statement {
-    principals {
-      type        = "Service"
-      identifiers = ["cloudfront.amazonaws.com"]
-    }
-
-    actions   = ["s3:GetObject"]
-    resources = [format("%v/*", module.buckets[each.key].s3_bucket_arn)]
-
-    condition {
-      test     = "StringEquals"
-      variable = "AWS:SourceArn"
-      values = [
-        module.cdn[each.key].cloudfront_distribution_arn
-      ]
-    }
-  }
-}
