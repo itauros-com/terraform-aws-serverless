@@ -71,13 +71,13 @@ locals {
           }
       ])
       ]) : format("%v-%v", v.lambda_key, v.trigger_key) => {
-      lambda_key             = v.lambda_key
-      trigger_key            = v.trigger_key
-      action                 = try(v.action, null)
-      principal              = coalesce(try(v.principal, null), format("%s.amazonaws.com", coalesce(v.service, "")))
-      principal_org_id       = try(v.principal_org_id, null)
-      service                = v.service
-      source                 = try(v.source, null)
+      lambda_key       = v.lambda_key
+      trigger_key      = v.trigger_key
+      action           = try(v.action, null)
+      principal        = coalesce(try(v.principal, null), format("%s.amazonaws.com", coalesce(v.service, "")))
+      principal_org_id = try(v.principal_org_id, null)
+      service          = v.service
+      source           = try(v.source, null)
       # schedule_key           = try(v.schedule_key, null)  # Not needed when using attach_lambda_policy
       source_account         = try(v.source_account, null)
       source_arn             = try(v.source_arn, null)
@@ -123,6 +123,8 @@ module "functions" {
   tags                           = each.value.tags
   timeout                        = each.value.timeout
   reserved_concurrent_executions = each.value.reserved_concurrent_executions
+  vpc_subnet_ids                 = var.vpc_subnet_ids
+  vpc_security_group_ids         = var.vpc_security_group_ids
 
   attach_policies    = true
   number_of_policies = 1

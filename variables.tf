@@ -328,3 +328,13 @@ variable "zone_id" {
   description = "Zone ID"
   default     = null
 }
+
+variable "vpc_subnet_ids" {
+  type = list(string)
+  default = null
+}
+
+variable "vpc_security_group_ids" {
+  type = list(string)
+  default = null
+}
