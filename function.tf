@@ -107,6 +107,7 @@ module "functions" {
       startswith(k, "DYNAMODB_") ? try(module.dynamodb_tables[v].dynamodb_table_id, v) :
       startswith(k, "SECRET_") ? try(module.secrets[v].secret_name, v) :
       startswith(k, "SNS_TOPIC_") ? try(module.sns[v].topic_arn, v) :
+      startswith(k, "MESSAGING_AWS_TOPICS_") ? try(module.sns[v].topic_arn, v) :
       v
     )
   }
