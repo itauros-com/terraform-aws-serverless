@@ -71,6 +71,9 @@ variable "apigateways" {
           routeKey                = "$context.routeKey"
           stage                   = "$context.stage"
           status                  = "$context.status"
+          authorizer = {
+            error = "$context.authorizer.error"
+          }
           error = {
             message      = "$context.error.message"
             responseType = "$context.error.responseType"
@@ -200,11 +203,15 @@ variable "functions" {
     handler                           = optional(string, "bootstrap")
     local_existing_package            = optional(string, "functions/dummy/go/dist/bootstrap.zip")
     memory_size                       = optional(number, 128)
+    package_type                      = optional(string, "Zip")
+    image_uri                         = optional(string)
     policies                          = optional(list(string), [])
     reserved_concurrent_executions    = optional(number, -1)
     runtime                           = optional(string, "provided.al2023")
     tags                              = optional(map(string), {})
     timeout                           = optional(number, 3)
+    vpc_subnet_ids                    = optional(list(string))
+    vpc_security_group_ids            = optional(list(string))
     triggers = optional(map(object({
       action                 = optional(string, "lambda:InvokeFunction")
       principal              = optional(string)
@@ -249,6 +256,25 @@ variable "security_groups" {
       to_port     = optional(number)
       protocol    = optional(string)
       cidr_blocks = optional(string)
+    })), [])
+    egress_with_source_security_group_id = optional(list(object({
+      from_port                = optional(number)
+      to_port                  = optional(number)
+      protocol                 = optional(string)
+      source_security_group_id = optional(string)
+      description              = optional(string)
+    })), [])
+    ingress_with_self = optional(list(object({
+      from_port   = optional(number)
+      to_port     = optional(number)
+      protocol    = optional(string)
+      description = optional(string)
+    })), [])
+    egress_with_self = optional(list(object({
+      from_port   = optional(number)
+      to_port     = optional(number)
+      protocol    = optional(string)
+      description = optional(string)
     })), [])
     revoke_rules_on_delete = optional(bool, true)
     tags                   = optional(map(string), {})
@@ -329,12 +355,57 @@ variable "zone_id" {
   default     = null
 }
 
-variable "vpc_subnet_ids" {
-  type = list(string)
-  default = null
+
+variable "ecr" {
+  type = map(object({
+    repository_name                    = optional(string)
+    repository_read_access_arns        = optional(list(string), [])
+    repository_lambda_read_access_arns = optional(list(string), [])
+  }))
+  default = {}
 }
 
-variable "vpc_security_group_ids" {
-  type = list(string)
-  default = null
+variable "glue" {
+  type = object({
+    connections = optional(map(object({
+      name                  = optional(string)
+      description           = optional(string)
+      subnet_id             = string
+      availability_zone     = string
+      security_group_ids    = list(string)
+      connection_properties = optional(map(string), {})
+      tags                  = optional(map(string), {})
+    })), {})
+    jobs = optional(map(object({
+      name                  = optional(string)
+      description           = optional(string)
+      job_type              = optional(string, "glueetl")
+      glue_version          = optional(string, "4.0")
+      worker_type           = optional(string)
+      number_of_workers     = optional(number)
+      max_capacity          = optional(number)
+      timeout               = optional(number, 60)
+      max_retries           = optional(number, 0)
+      max_concurrent_runs   = optional(number, 1)
+      script_bucket         = string
+      script_key            = string
+      python_version        = optional(string, "3")
+      connections           = optional(list(string), [])
+      policies              = optional(list(string), [])
+      default_arguments     = optional(map(string), {})
+      environment_arguments = optional(map(string), {})
+      schedule = optional(object({
+        type              = optional(string, "SCHEDULED")
+        cron              = optional(string)
+        start_on_creation = optional(bool, true)
+        enabled           = optional(bool, true)
+      }))
+      eventbridge = optional(object({
+        rule_name      = string
+        input_template = optional(string)
+      }))
+      tags = optional(map(string), {})
+    })), {})
+  })
+  default = { connections = {}, jobs = {} }
 }

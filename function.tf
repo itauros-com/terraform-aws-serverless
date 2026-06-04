@@ -11,12 +11,16 @@ locals {
       function_tags                     = v.function_tags
       handler                           = v.handler
       ignore_source_code_hash           = true
-      local_existing_package            = v.local_existing_package
+      image_uri                         = v.image_uri
+      local_existing_package            = v.image_uri != null ? null : v.local_existing_package
       memory_size                       = v.memory_size
+      package_type                      = v.package_type
       reserved_concurrent_executions    = v.reserved_concurrent_executions
       runtime                           = v.runtime
       tags                              = merge(local.tags, v.tags)
       timeout                           = v.timeout
+      vpc_subnet_ids                    = v.vpc_subnet_ids
+      vpc_security_group_ids            = [for sg in coalesce(v.vpc_security_group_ids, []) : try(module.security_groups[sg].security_group_id, sg)]
       policies                          = v.policies
     }
   }
@@ -117,14 +121,16 @@ module "functions" {
   function_tags                  = each.value.function_tags
   handler                        = each.value.handler
   ignore_source_code_hash        = each.value.ignore_source_code_hash
+  image_uri                      = each.value.image_uri
   local_existing_package         = each.value.local_existing_package
   memory_size                    = each.value.memory_size
+  package_type                   = each.value.package_type
   runtime                        = each.value.runtime
   tags                           = each.value.tags
   timeout                        = each.value.timeout
   reserved_concurrent_executions = each.value.reserved_concurrent_executions
-  vpc_subnet_ids                 = var.vpc_subnet_ids
-  vpc_security_group_ids         = var.vpc_security_group_ids
+  vpc_subnet_ids                 = each.value.vpc_subnet_ids
+  vpc_security_group_ids         = each.value.vpc_security_group_ids
 
   attach_policies    = true
   number_of_policies = 1
