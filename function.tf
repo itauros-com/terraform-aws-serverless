@@ -108,6 +108,7 @@ module "functions" {
       startswith(k, "SECRET_") ? try(module.secrets[v].secret_name, v) :
       startswith(k, "SNS_TOPIC_") ? try(module.sns[v].topic_arn, v) :
       startswith(k, "MESSAGING_AWS_TOPICS_") ? try(module.sns[v].topic_arn, v) :
+      startswith(k, "MESSAGING_AWS_QUEUES_") ? try(module.sqs[v].queue_url, v) :
       v
     )
   }
