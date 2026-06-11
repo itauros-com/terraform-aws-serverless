@@ -338,6 +338,11 @@ variable "eventbridge" {
   type = map(object({
     create_bus = optional(bool, false)
     bus_name   = optional(string, "default")
+    # IAM role name for the module instance. The upstream module derives
+    # it from bus_name when unset: two instances on the same bus would
+    # both try to create a role named "default" — set this on every
+    # instance after the first.
+    iam_role_name = optional(string)
     schedules = optional(map(object({
       description         = optional(string)
       schedule_expression = optional(string)
