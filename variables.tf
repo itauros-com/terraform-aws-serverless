@@ -289,10 +289,11 @@ variable "sns" {
     fifo_topic                  = optional(bool, false)
     name                        = optional(string)
     subscriptions = optional(map(object({
-      protocol            = string
-      endpoint            = string
-      filter_policy       = optional(string)
-      filter_policy_scope = optional(string, "MessageAttributes")
+      protocol             = string
+      endpoint             = string
+      filter_policy        = optional(string)
+      filter_policy_scope  = optional(string, "MessageAttributes")
+      raw_message_delivery = optional(bool, false)
     })), {})
     topic_policy_statements = optional(any, {})
   }))
