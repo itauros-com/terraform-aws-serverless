@@ -28,7 +28,7 @@ variable "apigateways" {
     })), {})
     cors_configuration = optional(object({
       allow_credentials = optional(bool)
-      allow_headers     = optional(list(string), ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token", "x-amz-user-agent"])
+      allow_headers     = optional(list(string), ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token", "x-amz-user-agent", "x-tenant-id", "x-app-id", "x-date"])
       allow_methods     = optional(list(string))
       allow_origins     = optional(list(string))
       expose_headers    = optional(list(string), [])
