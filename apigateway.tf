@@ -43,15 +43,21 @@ module "apigateways_v2" {
 
   authorizers = {
     for k, v in each.value.authorizers : k => {
-      authorizer_credentials_arn        = v.authorizer_credentials_arn
-      authorizer_payload_format_version = v.authorizer_payload_format_version
+      authorizer_credentials_arn = v.authorizer_credentials_arn
+      # Solo per REQUEST: API Gateway rifiuta la creazione di un authorizer JWT che lo
+      # porti, e il default della variabile lo mette su tutti. L'errore arriva
+      # all'apply, non al plan.
+      authorizer_payload_format_version = v.authorizer_type == "REQUEST" ? v.authorizer_payload_format_version : null
       authorizer_result_ttl_in_seconds  = v.authorizer_result_ttl_in_seconds
       authorizer_type                   = v.authorizer_type
-      authorizer_uri                    = coalesce(v.authorizer_uri, module.functions[v.lambda].lambda_function_invoke_arn)
-      enable_simple_responses           = v.enable_simple_responses
-      identity_sources                  = v.identity_sources
-      jwt_configuration                 = v.jwt_configuration
-      name                              = v.name
+      # Un authorizer JWT non ha lambda: API Gateway verifica il token da se'. Senza
+      # questa guardia l'indicizzazione su una chiave null interrompe il plan, quindi
+      # `lambda` era di fatto obbligatorio anche dove non ha senso.
+      authorizer_uri          = v.lambda == null ? v.authorizer_uri : coalesce(v.authorizer_uri, module.functions[v.lambda].lambda_function_invoke_arn)
+      enable_simple_responses = v.enable_simple_responses
+      identity_sources        = v.identity_sources
+      jwt_configuration       = v.jwt_configuration
+      name                    = v.name
     }
   }
   cors_configuration    = each.value.cors_configuration

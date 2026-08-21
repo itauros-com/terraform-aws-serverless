@@ -1,0 +1,293 @@
+#!/bin/bash
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+TFVARS_DIR="$PROJECT_ROOT/tfvars"
+TEMP_DIR="/tmp/tfvars-sync"
+PROVIDERS_FILE="$PROJECT_ROOT/providers.tf"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    exit 1
+}
+
+success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+usage() {
+    cat << EOF
+Usage: $0 -w WORKSPACE [OPTIONS]
+
+Sincronizza i file .tfvars con il bucket S3 configurato in providers.tf.
+
+OPTIONS:
+    -w, --workspace WORKSPACE   Workspace Terraform da sincronizzare (RICHIESTO)
+    -r, --region REGION         Regione AWS (default: eu-west-1)
+    -h, --help                  Mostra questo aiuto
+
+EXAMPLES:
+    $0 -w smartflow-dev         # Sincronizza smartflow-dev
+    $0 --workspace smartflow-prod --region us-east-1
+EOF
+}
+
+check_dependencies() {
+    log "Controllo dipendenze..."
+
+    if ! command -v aws &> /dev/null; then
+        error "AWS CLI non trovato. Installa AWS CLI e configura le credenziali."
+    fi
+
+    if ! command -v hcl2json &> /dev/null; then
+        error "hcl2json non trovato. Installa con: go install github.com/tmccombs/hcl2json@latest"
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        error "jq non trovato. Installa jq."
+    fi
+
+    if ! aws sts get-caller-identity &> /dev/null; then
+        error "Credenziali AWS non configurate o non valide."
+    fi
+
+    success "Dipendenze OK"
+}
+
+parse_terraform_config() {
+    log "Lettura configurazione da providers.tf..."
+
+    if [ ! -f "$PROVIDERS_FILE" ]; then
+        error "File providers.tf non trovato in $PROVIDERS_FILE"
+    fi
+
+    local bucket key workspace_key_prefix region
+
+    read bucket key workspace_key_prefix < <(
+        hcl2json "$PROVIDERS_FILE" | jq -r '.terraform[].backend.s3[] | [.bucket, .key, .workspace_key_prefix] | @tsv'
+    )
+
+    region=$(hcl2json "$PROVIDERS_FILE" | jq -r '.terraform[].backend.s3[].region // "eu-west-1"')
+
+    if [ -z "$bucket" ] || [ "$bucket" = "null" ]; then
+        error "Impossibile estrarre il bucket da providers.tf"
+    fi
+
+    if [ -z "$workspace_key_prefix" ] || [ "$workspace_key_prefix" = "null" ]; then
+        error "Impossibile estrarre workspace_key_prefix da providers.tf"
+    fi
+
+    if [ -z "$key" ] || [ "$key" = "null" ]; then
+        error "Impossibile estrarre key da providers.tf"
+    fi
+
+    if [ -z "$region" ] || [ "$region" = "null" ]; then
+        region="eu-west-1"
+    fi
+
+    # Assegna alle variabili globali
+    BUCKET="$bucket"
+    KEY_BASE="$key"
+    WORKSPACE_KEY_PREFIX="$workspace_key_prefix"
+    REGION="$region"
+
+    success "Configurazione estratta da providers.tf"
+}
+
+get_available_workspaces() {
+    # Lista tutti i workspace disponibili localmente
+    local local_workspaces=()
+    for tfvars_file in "$TFVARS_DIR"/*.tfvars; do
+        if [ -f "$tfvars_file" ]; then
+            local workspace=$(basename "$tfvars_file" .tfvars)
+            local_workspaces+=("$workspace")
+        fi
+    done
+
+    # Lista workspace da S3
+    local s3_workspaces=()
+    local s3_prefix="${WORKSPACE_KEY_PREFIX}/"
+
+    while IFS= read -r line; do
+        if [[ $line =~ ${s3_prefix}([^/]+)/${KEY_BASE}\.tfvars$ ]]; then
+            local workspace="${BASH_REMATCH[1]}"
+            s3_workspaces+=("$workspace")
+        fi
+    done < <(aws s3 ls "s3://${BUCKET}/${s3_prefix}" --recursive --region "$REGION" 2>/dev/null | grep "\.tfvars$" || true)
+
+    # Combina e rimuove duplicati
+    local all_workspaces=($(printf '%s\n' "${local_workspaces[@]}" "${s3_workspaces[@]}" | sort -u))
+
+    if [ ${#all_workspaces[@]} -eq 0 ]; then
+        warn "Nessun workspace trovato"
+        return 1
+    fi
+
+    printf '%s\n' "${all_workspaces[@]}"
+}
+
+sync_workspace() {
+    local workspace="$1"
+    local s3_key="${WORKSPACE_KEY_PREFIX}/${workspace}/${KEY_BASE}.tfvars"
+    local local_file="$TFVARS_DIR/${workspace}.tfvars"
+    local temp_file="$TEMP_DIR/${workspace}.tfvars"
+
+    log "Sincronizzazione workspace: $workspace"
+
+    # Download da S3
+    if aws s3 cp "s3://${BUCKET}/${s3_key}" "$temp_file" --region "$REGION" &> /dev/null; then
+        log "File scaricato da S3: $s3_key"
+    else
+        warn "File non trovato su S3: $s3_key"
+
+        if [ -f "$local_file" ]; then
+            echo "File locale esistente. Vuoi caricarlo su S3?"
+            read -p "Carica $workspace.tfvars su S3? (y/N): " upload_choice
+            if [[ $upload_choice =~ ^[Yy]$ ]]; then
+                aws s3 cp "$local_file" "s3://${BUCKET}/${s3_key}" --region "$REGION"
+                success "File caricato su S3: $s3_key"
+            fi
+        fi
+        return
+    fi
+
+    # Confronta con file locale
+    if [ ! -f "$local_file" ]; then
+        warn "File locale $workspace.tfvars non esiste"
+        read -p "Creare il file locale da S3? (y/N): " create_choice
+        if [[ $create_choice =~ ^[Yy]$ ]]; then
+            cp "$temp_file" "$local_file"
+            success "File locale creato: $workspace.tfvars"
+        fi
+    elif ! cmp -s "$temp_file" "$local_file"; then
+        warn "File $workspace.tfvars ha differenze"
+
+        echo
+        echo -e "${BLUE}=== Differenze per $workspace.tfvars ===${NC}"
+        if command -v colordiff &> /dev/null; then
+            diff -u "$local_file" "$temp_file" | colordiff || true
+        else
+            diff -u "$local_file" "$temp_file" || true
+        fi
+
+        echo
+        echo "Opzioni per $workspace.tfvars:"
+        echo "1) Sovrascrivere il file locale con quello da S3"
+        echo "2) Aggiornare S3 con il file locale"
+        echo "3) Saltare questo workspace"
+
+        while true; do
+            read -p "Scegli un'opzione (1-3): " choice
+            case $choice in
+                1)
+                    cp "$temp_file" "$local_file"
+                    success "File locale sovrascritto"
+                    break
+                    ;;
+                2)
+                    aws s3 cp "$local_file" "s3://${BUCKET}/${s3_key}" --region "$REGION"
+                    success "File caricato su S3"
+                    break
+                    ;;
+                3)
+                    warn "Workspace saltato"
+                    break
+                    ;;
+                *)
+                    echo "Opzione non valida. Scegli 1, 2 o 3."
+                    ;;
+            esac
+        done
+    else
+        success "File $workspace.tfvars già allineato"
+    fi
+}
+
+cleanup() {
+    if [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
+        log "File temporanei rimossi"
+    fi
+}
+
+trap cleanup EXIT
+
+# Valori default
+WORKSPACE=""
+REGION_OVERRIDE=""
+
+# Parse degli argomenti con getopt
+TEMP_ARGS=$(getopt -o w:r:h --long workspace:,region:,help -n "$0" -- "$@")
+if [ $? != 0 ] ; then error "Errore nel parsing degli argomenti" ; fi
+
+eval set -- "$TEMP_ARGS"
+
+while true ; do
+    case "$1" in
+        -w|--workspace)
+            WORKSPACE="$2"
+            shift 2
+            ;;
+        -r|--region)
+            REGION_OVERRIDE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            error "Opzione interna non gestita!"
+            ;;
+    esac
+done
+
+# Verifica che il workspace sia specificato
+if [ -z "$WORKSPACE" ]; then
+    error "Il parametro --workspace è richiesto"
+fi
+
+# Parse della configurazione Terraform
+parse_terraform_config
+
+# Override region se specificata
+if [ -n "$REGION_OVERRIDE" ]; then
+    REGION="$REGION_OVERRIDE"
+fi
+
+log "Configurazione:"
+log "  Bucket: $BUCKET"
+log "  Workspace Key Prefix: $WORKSPACE_KEY_PREFIX"
+log "  Key Base: $KEY_BASE"
+log "  Region: $REGION"
+log "  Local tfvars dir: $TFVARS_DIR"
+
+check_dependencies
+
+mkdir -p "$TEMP_DIR"
+mkdir -p "$TFVARS_DIR"
+
+# Sincronizza workspace specifico
+sync_workspace "$WORKSPACE"
+
+success "Sincronizzazione completata"

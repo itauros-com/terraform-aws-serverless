@@ -180,15 +180,57 @@ variable "cloudfront" {
 
 variable "dynamodb_tables" {
   type = map(object({
-    attributes     = optional(list(map(string)), [])
-    billing_mode   = optional(string, "PAY_PER_REQUEST")
-    hash_key       = optional(string)
+    attributes   = optional(list(map(string)), [])
+    billing_mode = optional(string, "PAY_PER_REQUEST")
+    hash_key     = optional(string)
+    range_key    = optional(string)
+    # Ogni attributo usato come chiave di un indice va dichiarato anche in
+    # `attributes`: DynamoDB rifiuta la tabella altrimenti, e l'errore arriva
+    # all'apply, non al plan.
+    global_secondary_indexes = optional(list(object({
+      name               = string
+      hash_key           = string
+      range_key          = optional(string)
+      projection_type    = optional(string, "ALL")
+      non_key_attributes = optional(list(string))
+      read_capacity      = optional(number)
+      write_capacity     = optional(number)
+    })), [])
     name           = optional(string)
     read_capacity  = optional(number)
     tags           = optional(map(string), {})
     write_capacity = optional(number)
   }))
   default = {}
+}
+
+variable "admin_routing" {
+  description = <<-EOT
+    Righe della routing table del pannello amministrativo: per ogni tenant, dove
+    raggiungere ciascun servizio.
+
+    Le chiavi di `tenants` sono l'elenco autorevole dei tenant amministrabili — un
+    tenant assente non esiste per il pannello, e non ricade sul default. `defaults`
+    diventa la riga "_default", da cui ogni tenant eredita i *servizi che non
+    nomina*: il merge è per servizio, perché il caso reale è un tenant con accessi
+    dedicato e powerflow condiviso.
+
+    Terraform è l'unico scrittore. `aws_dynamodb_table_item` usa PutItem e
+    sostituisce l'item intero, quindi un attributo scritto a mano qui sparisce al
+    primo apply.
+  EOT
+  type = object({
+    table = string
+    defaults = optional(map(object({
+      base_url          = string
+      api_key_secret_id = optional(string)
+    })), {})
+    tenants = map(map(object({
+      base_url          = string
+      api_key_secret_id = optional(string)
+    })))
+  })
+  default = null
 }
 
 variable "functions" {

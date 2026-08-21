@@ -104,7 +104,16 @@ module "functions" {
   environment_variables = {
     for k, v in each.value.environment_variables : k => (
       startswith(k, "BUCKET_") ? try(module.buckets[v].s3_bucket_id, v) :
-      startswith(k, "DYNAMODB_") ? try(module.dynamodb_tables[v].dynamodb_table_id, v) :
+      # `contains` e non `startswith`: ogni servizio nomina la variabile a modo suo —
+      # DYNAMODB_TABLE_TENANTS in powerflow, INTEGRATIONS_DYNAMODB_TABLE in accessi,
+      # ADMIN_AWS_DYNAMODB_JOBS_TABLE nel portale — e un elenco di prefissi per
+      # servizio è una lista che qualcuno dimentica di aggiornare. Il sintomo sarebbe
+      # una Lambda che riceve il nome logico invece di quello reale e risponde
+      # "table not found" a runtime.
+      #
+      # Il `try` copre i valori che non sono nomi logici, come
+      # ADMIN_AWS_DYNAMODB_ENDPOINT: passano invariati.
+      strcontains(k, "DYNAMODB_") ? try(module.dynamodb_tables[v].dynamodb_table_id, v) :
       startswith(k, "SECRET_") ? try(module.secrets[v].secret_name, v) :
       startswith(k, "SNS_TOPIC_") ? try(module.sns[v].topic_arn, v) :
       startswith(k, "MESSAGING_AWS_TOPICS_") ? try(module.sns[v].topic_arn, v) :
